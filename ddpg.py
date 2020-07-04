@@ -2,8 +2,6 @@ import gym
 import random
 import torch
 import numpy as np
-import matplotlib.pyplot as plt
-%matplotlib inline
 
 import copy
 from collections import namedtuple, deque
@@ -24,7 +22,7 @@ def hidden_init(layer):
 class Actor(nn.Module):
     """Actor (Policy) Model."""
 
-    def __init__(self, state_size, action_size, seed, fc1_units=400, fc2_units=300):
+    def __init__(self, state_size, action_size, seed, fc1_units=256, fc2_units=256):
         """Initialize parameters and build model.
         Params
         ======
@@ -40,7 +38,7 @@ class Actor(nn.Module):
         self.batch_norm = nn.BatchNorm1d(fc1_units)
         self.fc2 = nn.Linear(fc1_units, fc2_units)
         self.fc3 = nn.Linear(fc2_units, action_size)
-        self.reset_parameters()
+        #self.reset_parameters()
 
     def reset_parameters(self):
         self.fc1.weight.data.uniform_(*hidden_init(self.fc1))
@@ -57,7 +55,7 @@ class Actor(nn.Module):
 class Critic(nn.Module):
     """Critic (Value) Model."""
 
-    def __init__(self, state_size, action_size, seed, fcs1_units=400, fc2_units=300):
+    def __init__(self, state_size, action_size, seed, fcs1_units=256, fc2_units=256):
         """Initialize parameters and build model.
         Params
         ======
@@ -73,7 +71,7 @@ class Critic(nn.Module):
         self.batch_norm = nn.BatchNorm1d(fcs1_units)
         self.fc2 = nn.Linear(fcs1_units+action_size, fc2_units)
         self.fc3 = nn.Linear(fc2_units, 1)
-        self.reset_parameters()
+        #self.reset_parameters()
 
     def reset_parameters(self):
         self.fcs1.weight.data.uniform_(*hidden_init(self.fcs1))
@@ -271,10 +269,9 @@ class ReplayBuffer:
         return len(self.memory)
 
 
-def ddpg(n_episodes=200, max_t=1000, print_every=10):
+def ddpg(n_episodes=150, max_t=1000, print_every=10):
     scores_deque = deque(maxlen=100)
     scores = []
-    minmax_scores = []
     average_100_scores = []
     time_stamp = 0
     for i_episode in range(1, n_episodes+1):
@@ -297,24 +294,20 @@ def ddpg(n_episodes=200, max_t=1000, print_every=10):
             if done:
                 break 
         
-        scores_deque.append(np.mean(score))
-        scores.append(np.mean(score))
-        minmax_scores.append((np.min(score),np.max(score)))
+        scores_deque.append(score)
+        scores.append(score)
+
         average_100_scores.append(np.mean(scores_deque))
-        
-        print('\rEpisode {}  Min_reward: {:.2f}  Max_reward: {:.2f}  Mean_reward: {:.2f}  Average100 Score: {:.2f}'.format(i_episode,np.min(score),np.max(score),np.mean(score), np.mean(scores_deque)), end="")
+        wandb.log({"Reward": score, "Average100": np.mean(scores_deque)})
+        print('\rEpisode {} Reward {:.2f}  Average100 Score: {:.2f}'.format(i_episode, score, np.mean(scores_deque)), end="")
         if i_episode % 25 == 0:
             torch.save(agent.actor_local.state_dict(), "checkpoint_actor"+str(i_episode)+".pth")
             torch.save(agent.critic_local.state_dict(), "checkpoint_critic"+str(i_episode)+".pth")
         if i_episode % print_every == 0:
-            print('\rEpisode {}  Min_reward: {:.2f}  Max_reward: {:.2f}  Mean_reward: {:.2f}  Average100 Score: {:.2f}'.format(i_episode,np.min(score),np.max(score),np.mean(score), np.mean(scores_deque)))
-        if np.mean(scores_deque) >= 30:
-            print("\nSolved Environment!")
-            torch.save(agent.actor_local.state_dict(), 'final_actor.pth')
-            torch.save(agent.critic_local.state_dict(), 'final_critic.pth')
-            break
-    return scores, minmax_scores, average_100_scores
-
+            print('\rEpisode {} Reward: {:.2f}  Average100 Score: {:.2f}'.format(i_episode,score, np.mean(scores_deque)))
+    
+    torch.save(agent.actor_local.state_dict(), 'final_actor.pth')
+    torch.save(agent.critic_local.state_dict(), 'final_critic.pth')
 
 
     
@@ -326,8 +319,8 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument('-env', type=str, default="Pendulum-v0",
                      help='Name of the environment (default: Pendulum-v0)')
-    parser.add_argument('-f', "--frames", type=int, default=40000,
-                     help='Number of training frames (default: 40000)')    
+    parser.add_argument('-eps', type=int, default=200,
+                     help='Number of training Episodes (default: 200)')    
     parser.add_argument('-mem', type=int, default=100000,
                      help='Replay buffer size (default: 100000)')
     parser.add_argument('-b', "--batch_size", type=int, default=128,
@@ -369,4 +362,4 @@ if __name__ == "__main__":
     agent = Agent(state_size=state_size, action_size=action_size, random_seed=args.seed)
 
 
-    scores, minmax, average_100 = ddpg()
+    ddpg(n_episodes=args.eps)
